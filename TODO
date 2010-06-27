@@ -1,0 +1,11 @@
+class Request
+  include Chronos::Document
+  
+  # default, assumes all levels above it
+  resolution :minute 
+  
+  # generates automatically if not defined
+  def key
+    # blarg
+  end
+end
