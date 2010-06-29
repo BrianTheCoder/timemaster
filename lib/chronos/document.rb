@@ -4,7 +4,7 @@ module Chronos
       klass.extend ClassMethods
       klass.extend Helpers
       klass.send(:include, Helpers)
-      klass.send(:attr_accessor, :key)
+      klass.send(:attr_accessor, *[:key, :attributes])
       klass.send(:attr_reader, :time)
       klass.cattr_accessor :resolution_period
       klass.cattr_accessor :tags
@@ -59,7 +59,7 @@ module Chronos
       case params
       when Hash
         @time = params.delete(:time) || Time.now.utc
-        riak_object.data = params
+        @attributes = Hashie::Mash.new(params)
       when Riak::RObject
         self.riak_object = params
       end
@@ -67,7 +67,7 @@ module Chronos
     
     def make_links
       return link_for if self.class.tags.blank?
-      self.class.tags.map{|key| link_for("#{key}_#{data[key.to_s]}")}.flatten.compact
+      self.class.tags.map{|key| link_for("#{key}_#{@attributes[key.to_sym]}")}.flatten.compact
     end
     
     def time_from_link(link)
@@ -75,7 +75,10 @@ module Chronos
     end
     
     def resolutions
-      @resolutions ||= RESOLUTIONS[0..resolution_index].map{|period| Resolution.new(period, time)}
+      @resolutions ||= RESOLUTIONS[0..resolution_index].inject({}) do |hash, period| 
+        hash[period] = Resolution.new(period, time)
+        hash
+      end
     end
     
     def resolution_index
@@ -109,18 +112,18 @@ module Chronos
         if operator == '='
           set_value(method, args.first)
         elsif operator == '?'
-          !data[method].blank?
+          !@attributes[method].blank?
         end
       else 
-        data[method_name]
+        @attributes[method_name]
       end
     end
     
     def set_value(method, val)
       if val.blank?
-        data.delete(method)
+        @attributes.delete(method)
       else
-        data[method] = val
+        @attributes[method] = val
       end
     end
     
@@ -128,14 +131,28 @@ module Chronos
       @bucket_name ||= self.class.bucket_name
     end
     
+    def resolution_docs
+      RESOLUTIONS[0..resolution_index].each do |period|
+        res_period = resolutions[period]
+        unless res_period.exists?
+          if (child = resolutions[res_period.next])
+            res_period.links << child.link
+          end
+          res_period.store
+          if (parent = resolutions[res_period.prev])
+            parent.update_links!(res_period.link)
+          end
+        end
+      end
+    end
+    
     def save
-      resolutions[0..-1].each(&:save)
-      linked_res = resolutions.last
+      resolution_docs
+      data = @attributes
       store
       self.key = riak_object.key
-      linked_res.links.merge make_links
-      linked_res.update!
-      self
+      linked_res = resolutions[self.class.resolution_period]
+      linked_res.update_links!(make_links)
     end
   end
 end

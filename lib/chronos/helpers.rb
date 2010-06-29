@@ -8,10 +8,10 @@ module Chronos
       @riak_object ||= bucket.new(key)
     end
     
-    delegate :walk, :links, :store, :data, :to => :riak_object
+    delegate :walk, :links, :store, :data, :reload, :to => :riak_object
     
     def path
-      @path ||= [bucket_name, key].join('/')
+      @path ||= ['', 'riak', bucket_name, key].join('/')
     end
     
     def exists? 
@@ -19,7 +19,7 @@ module Chronos
     end
     
     def link_for(tag = nil)
-      Riak::Link.new("/riak/#{path}", tag)
+      Riak::Link.new(path, tag)
     end
     
     def walk_spec(tag = nil, keep = false)

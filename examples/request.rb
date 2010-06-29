@@ -14,6 +14,20 @@ class Request
   tag :action_name
 end
 
+module Riak
+  class Bucket
+    def wipe!
+      keys do |key_array|
+        key_array.each{|key| delete(key)}
+      end
+    end
+  end
+end
+
+def wipe_all!
+  %w(years months days hours minutes requests).each{|name| Chronos.riak.bucket(name).wipe! }
+end
+
 def seed
   controllers = %w(users posts settings photos)
   actions = %w(index new create edit update destroy)
