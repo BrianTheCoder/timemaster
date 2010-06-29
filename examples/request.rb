@@ -6,4 +6,7 @@ class Request
   include Chronos::Document
   
   resolution :minute
+  
+  tag :controller_name
+  tag :action_name
 end

@@ -1,82 +1,76 @@
-require 'rubygems'
-require 'rake'
+# Rakefile for Smeagol Repository
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 
 begin
-  require 'jeweler'
-  Jeweler::Tasks.new do |gem|
-    gem.name = "chronos"
-    gem.summary = %Q{TODO: one-line summary of your gem}
-    gem.description = %Q{TODO: longer description of your gem}
-    gem.email = "wbsmith83@gmail.com"
-    gem.homepage = "http://github.com/BrianTheCoder/chronos"
-    gem.authors = ["brianthecoder"]
-    gem.rubyforge_project = "chronos"
-    gem.add_development_dependency "riot", ">= 0"
-    gem.add_development_dependency "yard", ">= 0"
-    # gem is a Gem::Specification... see http://www.rubygems.org/read/chapter/20 for additional settings
-  end
-  Jeweler::GemcutterTasks.new
-  Jeweler::RubyforgeTasks.new do |rubyforge|
-    rubyforge.doc_task = "yardoc"
-  end
-rescue LoadError
-  puts "Jeweler (or a dependency) not available. Install it with: gem install jeweler"
-end
+  require 'rubygems'
+  require 'chef'
+  require 'json'
 
-require 'rake/testtask'
-Rake::TestTask.new(:test) do |test|
-  test.libs << 'lib' << 'test'
-  test.pattern = 'test/**/*_test.rb'
-  test.verbose = true
-end
+  # Load constants from rake config file.
+  require File.join(File.dirname(__FILE__), 'config', 'rake')
 
-begin
-  require 'rcov/rcovtask'
-  Rcov::RcovTask.new do |test|
-    test.libs << 'test'
-    test.pattern = 'test/**/*_test.rb'
-    test.verbose = true
-  end
-rescue LoadError
-  task :rcov do
-    abort "RCov is not available. In order to run rcov, you must: sudo gem install spicycode-rcov"
-  end
-end
+  # Detect the version control system and assign to $vcs. Used by the update
+  # task in chef_repo.rake (below). The install task calls update, so this
+  # is run whenever the repo is installed.
+  #
+  # Comment out these lines to skip the update.
 
-task :test => :check_dependencies
+  if File.directory?(File.join(TOPDIR, ".svn"))
+    $vcs = :svn
+  elsif File.directory?(File.join(TOPDIR, ".git"))
+    $vcs = :git
+  end
 
-begin
-  require 'reek/adapters/rake_task'
-  Reek::RakeTask.new do |t|
-    t.fail_on_error = true
-    t.verbose = false
-    t.source_files = 'lib/**/*.rb'
-  end
-rescue LoadError
-  task :reek do
-    abort "Reek is not available. In order to run reek, you must: sudo gem install reek"
-  end
-end
+  # Load common, useful tasks from Chef.
+  # rake -T to see the tasks this loads.
 
-begin
-  require 'roodi'
-  require 'roodi_task'
-  RoodiTask.new do |t|
-    t.verbose = false
-  end
-rescue LoadError
-  task :roodi do
-    abort "Roodi is not available. In order to run roodi, you must: sudo gem install roodi"
-  end
-end
+  load 'chef/tasks/chef_repo.rake'
 
-task :default => :test
+  desc "Bundle a single cookbook for distribution"
+  task :bundle_cookbook => [ :metadata ]
+  task :bundle_cookbook, :cookbook do |t, args|
+    tarball_name = "#{args.cookbook}.tar.gz"
+    temp_dir = File.join(Dir.tmpdir, "chef-upload-cookbooks")
+    temp_cookbook_dir = File.join(temp_dir, args.cookbook)
+    tarball_dir = File.join(TOPDIR, "pkgs")
+    FileUtils.mkdir_p(tarball_dir)
+    FileUtils.mkdir(temp_dir)
+    FileUtils.mkdir(temp_cookbook_dir)
 
-begin
-  require 'yard'
-  YARD::Rake::YardocTask.new
-rescue LoadError
-  task :yardoc do
-    abort "YARD is not available. In order to run yardoc, you must: sudo gem install yard"
+    child_folders = [ "cookbooks/#{args.cookbook}", "site-cookbooks/#{args.cookbook}" ]
+    child_folders.each do |folder|
+      file_path = File.join(TOPDIR, folder, ".")
+      FileUtils.cp_r(file_path, temp_cookbook_dir) if File.directory?(file_path)
+    end
+
+    system("tar", "-C", temp_dir, "-cvzf", File.join(tarball_dir, tarball_name), "./#{args.cookbook}")
+
+    FileUtils.rm_rf temp_dir
   end
+
+  namespace :smeagol do
+    task :install do |t, args|
+      system("chef-solo -j config/run_list.json -c config/solo.rb")
+    end
+    task :cleanup do |t, args|
+      %w(mongod post mysql).each do |server_type|
+        system("launchctl unload -w ~/Library/LaunchAgents/*.#{server_type}*")
+        system("ps auwwx | grep #{server_type} | awk '{print $2}' | xargs kill -9")
+        system("rm ~/Library/LaunchAgents/*.#{server_type}*")
+      end
+      sleep 2
+      system("sudo rm -rf /usr/local")
+    end
+  end
+rescue LoadError => e
+  puts e.message
+  puts "You don't seem to have chef, installing it for you"
+  system("gem install chef --no-rdoc --no-ri")
+  puts "I had to install chef for you, please rerun 'rake smeagol'"
 end

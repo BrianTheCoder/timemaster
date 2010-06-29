@@ -4,22 +4,35 @@ module Chronos
       klass.extend ClassMethods
       klass.extend Helpers
       klass.send(:include, Helpers)
-      klass.send(:attr_accessor, *[:key, :attributes, :time])
+      klass.send(:attr_accessor, *[:key, :attributes])
+      klass.send(:attr_reader, :time)
       klass.cattr_accessor :resolution_period
+      klass.cattr_accessor :indexed_keys
     end
     
     module ClassMethods
       def get(id)
-        bucket.get(id)
+        begin
+          new bucket.get(id)
+        rescue Riak::FailedRequest
+          nil
+        end
+      end
+      
+      def bucket_name
+        @bucket_name ||= self.to_s.tableize
       end
       
       def resolution(period)
         self.resolution_period = period
       end
       
-      def epoch(resolution = :hour, time = Time.now)
-        res_instance = Resolution.new(resolution, time)
-        "/#{res_instance.path}/#{bucket_name},_,_"
+      def epoch(params = {})
+        options = {
+          :resolution => :hour,
+          :time => Time.new,
+          :keep => false }.merge(params)
+        res_instance = Resolution.new(options[:resolution], options[:time])
       end
       
       def period(resolution = :hour, start = 1.day.ago, stop = Time.now)
@@ -31,14 +44,32 @@ module Chronos
         end
         keys
       end
+      
+      def tag(key, options = {})
+        self.indexed_keys ||= []
+        self.indexed_keys << key
+      end
     end
     
-    def initialize(time = Time.now, params = {})
-      @time, @attributes = time, params
+    def initialize(params = {})
+      case params
+      when Hash
+        @time = params.delete(:time) || Time.now.utc
+        @attributes = Hashie::Mash.new(params)
+      when Riak::RObject
+        @riak_object = params
+        @links = params.links
+        @key = params.key
+        @attributes = params.data
+      end
     end
     
     def links
-      @links = resolutions.map(&:link)
+      @links ||= resolutions.map(&:link) + self.class.indexed_keys.map{|key| make_links_for(key)}.flatten.compact
+    end
+    
+    def time_from_link(link)
+      Time.utc(*link.url.split('/').last.split('_'))
     end
     
     def resolutions
@@ -47,6 +78,25 @@ module Chronos
     
     def resolution_index
       @resolution_index ||= RESOLUTIONS.index(self.class.resolution_period)
+    end
+    
+    def time=(timestamp)
+      case timestamp
+      when Date
+        self.time = timestamp.to_time
+      when Time
+        @time = timestamp.utc
+      when Riak::Link
+        self.time = time_from_link(timestamp)
+      end
+    end
+    
+    def [](key)
+      attributes[key]
+    end
+    
+    def []=(key, value)
+      attributes[key] = value
     end
     
     def method_missing(method_symbol, *args)
@@ -76,12 +126,16 @@ module Chronos
       @bucket_name ||= self.class.bucket_name
     end
     
+    def make_links_for(tag)
+      return nil unless @attributes.key?(tag)
+      return resolutions.map{|res| res.link_for("#{tag}:#{@attributes[tag]}") }
+    end
+    
     def save
-      if key.blank?
-        p 'POST'
-      else
-        p 'PUT'
-      end
+      resolutions.each(&:save)
+      riak_object.data  = @attributes
+      riak_object.links = links
+      riak_object.store
     end
   end
 end

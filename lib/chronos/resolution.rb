@@ -16,6 +16,10 @@ module Chronos
       @tag ||= time.to_s(name)
     end
     
+    def bucket_name
+      @bucket_name ||= name.to_s.tableize
+    end
+    
     def key
       return @key if @key
       # join string up to resolution and user to format time
@@ -36,7 +40,7 @@ module Chronos
     end
     
     def link
-      @link ||= Riak::Link.new("/riak/#{path}", "#{child.bucket_name}:#{tag}")
+      @link ||= link_for("#{child.bucket_name}:#{tag}")
     end
     
     def child
@@ -46,8 +50,11 @@ module Chronos
       @child = self.class.new(child_period, time)
     end
     
-    def save(now = Time.now, &block)
-      
+    def save
+      unless exists?
+        riak_object.links = links
+        riak_object.store
+      end
     end
   end
 end

@@ -9,3 +9,18 @@ class Request
     # blarg
   end
 end
+
+* saving documents
+  * check that lined docs exist
+  * resolution content_type?
+* queurying
+  * single doc
+  * epoch
+  * range
+* stats (map/reduce)
+  * counts
+  * sum
+  * avg
+  
+* easy custom links
+* query by custom links
