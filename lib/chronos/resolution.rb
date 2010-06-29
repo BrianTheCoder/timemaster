@@ -3,17 +3,23 @@ module Chronos
   class Resolution
     include Helpers
     
+    def self.index(resolution)
+      RESOLUTIONS.index(resolution)
+    end
+    
     attr_accessor :name, :time
     def initialize(name, time = Time.now)
       @name, @time = name, time
     end
     
     def index
-      @index ||= RESOLUTIONS.index(name)
+      @index ||= self.class.index(name)
     end
     
-    def tag
-      @tag ||= time.to_s(name)
+    def default_tag
+      return @tag if @tag
+      return nil unless @time
+      @tag = @time.to_s(name)
     end
     
     def bucket_name
@@ -27,10 +33,6 @@ module Chronos
       @key = RESOLUTIONS[0..index].inject(''){|str, res| "#{str}_#{time.to_s(res)}"}[1..-1]
     end
     
-    def links
-      @links ||= parent.blank? ? [] : parent.links.push(parent.link)
-    end
-    
     def parent
       return @parent if @parent
       return nil unless (parent_index = index - 1) >= 0
@@ -40,7 +42,7 @@ module Chronos
     end
     
     def link
-      @link ||= link_for("#{child.bucket_name}:#{tag}")
+      @link ||= child.link_for(child.default_tag)
     end
     
     def child
@@ -50,10 +52,16 @@ module Chronos
       @child = self.class.new(child_period, time)
     end
     
+    def update!
+      old_object = bucket.get(key)
+      links.merge old_object.links
+      store
+    end
+    
     def save
       unless exists?
-        riak_object.links = links
-        riak_object.store
+        self.links << link unless child.blank?
+        store
       end
     end
   end

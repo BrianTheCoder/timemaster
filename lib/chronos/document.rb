@@ -4,10 +4,10 @@ module Chronos
       klass.extend ClassMethods
       klass.extend Helpers
       klass.send(:include, Helpers)
-      klass.send(:attr_accessor, *[:key, :attributes])
+      klass.send(:attr_accessor, :key)
       klass.send(:attr_reader, :time)
       klass.cattr_accessor :resolution_period
-      klass.cattr_accessor :indexed_keys
+      klass.cattr_accessor :tags
     end
     
     module ClassMethods
@@ -27,12 +27,16 @@ module Chronos
         self.resolution_period = period
       end
       
-      def epoch(params = {})
-        options = {
-          :resolution => :hour,
-          :time => Time.new,
-          :keep => false }.merge(params)
-        res_instance = Resolution.new(options[:resolution], options[:time])
+      def epoch(period = :hour, time = Time.now.utc, tag = nil)
+        # res_instance = Resolution.new(options[:resolution], options[:time])
+        index = Resolution.index(resolution_period)
+        res_index = Resolution.index(period)
+        resolutions = []
+        RESOLUTIONS[0..index].each_with_index do |res_period, i| 
+          resolutions[i] = Resolution.new(res_period, (i <= res_index) ? time : nil)
+        end
+        root = resolutions.shift.riak_object
+        root.walk(resolutions.map(&:walk_spec).insert(-1, Riak::WalkSpec.new('requests', tag, true))).flatten
       end
       
       def period(resolution = :hour, start = 1.day.ago, stop = Time.now)
@@ -45,9 +49,9 @@ module Chronos
         keys
       end
       
-      def tag(key, options = {})
-        self.indexed_keys ||= []
-        self.indexed_keys << key
+      def tag(new_tag, options = {})
+        self.tags ||= []
+        self.tags << new_tag
       end
     end
     
@@ -55,17 +59,15 @@ module Chronos
       case params
       when Hash
         @time = params.delete(:time) || Time.now.utc
-        @attributes = Hashie::Mash.new(params)
+        riak_object.data = params
       when Riak::RObject
-        @riak_object = params
-        @links = params.links
-        @key = params.key
-        @attributes = params.data
+        self.riak_object = params
       end
     end
     
-    def links
-      @links ||= resolutions.map(&:link) + self.class.indexed_keys.map{|key| make_links_for(key)}.flatten.compact
+    def make_links
+      return link_for if self.class.tags.blank?
+      self.class.tags.map{|key| link_for("#{key}_#{data[key.to_s]}")}.flatten.compact
     end
     
     def time_from_link(link)
@@ -107,18 +109,18 @@ module Chronos
         if operator == '='
           set_value(method, args.first)
         elsif operator == '?'
-          !@attributes[method].blank?
+          !data[method].blank?
         end
       else 
-        @attributes[method_name]
+        data[method_name]
       end
     end
     
     def set_value(method, val)
       if val.blank?
-        @attributes.delete(method)
+        data.delete(method)
       else
-        @attributes[method] = val
+        data[method] = val
       end
     end
     
@@ -126,16 +128,14 @@ module Chronos
       @bucket_name ||= self.class.bucket_name
     end
     
-    def make_links_for(tag)
-      return nil unless @attributes.key?(tag)
-      return resolutions.map{|res| res.link_for("#{tag}:#{@attributes[tag]}") }
-    end
-    
     def save
-      resolutions.each(&:save)
-      riak_object.data  = @attributes
-      riak_object.links = links
-      riak_object.store
+      resolutions[0..-1].each(&:save)
+      linked_res = resolutions.last
+      store
+      self.key = riak_object.key
+      linked_res.links.merge make_links
+      linked_res.update!
+      self
     end
   end
 end
