@@ -8,8 +8,16 @@ module Chronos
     end
     
     attr_accessor :name, :time
-    def initialize(name, time = Time.now)
-      @name, @time = name, time
+    def initialize(name, time)
+      @name = name
+      @time = case time
+      when Time then
+        time
+      when String
+        Time.utc(*time.split('_'))
+      when Nil
+        Time.now.utc
+      end
     end
     
     def index
@@ -35,9 +43,9 @@ module Chronos
     end
     
     def update_links!(*args)
-      reload
-      links.merge args.flatten
-      store
+      obj = bucket.get(key)
+      obj.links.merge args.flatten
+      obj.store
     end
     
     def key

@@ -97,11 +97,11 @@ module Chronos
     end
     
     def [](key)
-      attributes[key]
+      @attributes[key]
     end
     
     def []=(key, value)
-      attributes[key] = value
+      @attributes[key] = value
     end
     
     def method_missing(method_symbol, *args)

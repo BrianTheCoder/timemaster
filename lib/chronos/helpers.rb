@@ -8,7 +8,7 @@ module Chronos
       @riak_object ||= bucket.new(key)
     end
     
-    delegate :walk, :links, :store, :data, :reload, :to => :riak_object
+    delegate :walk, :links, :store, :data, :to => :riak_object
     
     def path
       @path ||= ['', 'riak', bucket_name, key].join('/')

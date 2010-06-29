@@ -6,7 +6,7 @@ context "chronos" do
     Timecop.freeze(@time)
   end
 
-  asserts "i'm a failure :(" do
-    topic
+  asserts "creates all the appropriate time based keys" do
+    
   end
 end
