@@ -4,7 +4,7 @@ require 'rake'
 begin
   require 'jeweler'
   Jeweler::Tasks.new do |gem|
-    gem.name = "chronos"
+    gem.name = "timemaster"
     gem.summary = %Q{A way to easily store time based data scalably in riak}
     gem.description = %Q{Creates buckets for a given resolution and will create all the appropriate links}
     gem.email = "wbsmith83@gmail.com"
