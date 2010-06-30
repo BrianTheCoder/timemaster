@@ -10,7 +10,7 @@ begin
     gem.email = "wbsmith83@gmail.com"
     gem.homepage = "http://github.com/BrianTheCoder/chronos"
     gem.authors = ["brianthecoder"]
-    gem.files.include %w(lib/chronos.rb lib/chronos/document.rb lib/chronos/extensions.rb lib/chronos/helpers.rb lib/chronos/resolution.rb lib/chronos/version.rb)
+    gem.files.include %w(lib/timemaster.rb lib/timemaster/document.rb lib/timemaster/extensions.rb lib/timemaster/helpers.rb lib/timemaster/resolution.rb lib/timemaster/version.rb)
     gem.add_development_dependency "yard"
     gem.add_dependency "riak-client"
     gem.add_dependency "activesupport"
